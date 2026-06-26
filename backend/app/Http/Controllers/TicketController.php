@@ -1,45 +1,64 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use App\Models\Ticket;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use App\Jobs\ProcessTicketAi;
+use App\Jobs\ProcessTicketAI;
 
 class TicketController extends Controller
 {
+    /**
+     * Ticket oluştur
+     * POST /api/tickets
+     */
     public function store(Request $request)
     {
-        // 1. Gelen verileri doğrula
         $validatedData = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
+            'name'    => 'required|string|max:255',
+            'email'   => 'required|email|max:255',
             'message' => 'required|string',
         ]);
 
-        // 2. Veritabanına kaydet
         $ticket = Ticket::create([
-            'name' => $validatedData['name'],
-            'email' => $validatedData['email'],
+            'user_id' => $request->user()->id, // giriş yapmış kullanıcının id'si
+            'name'    => $validatedData['name'],
+            'email'   => $validatedData['email'],
             'message' => $validatedData['message'],
-            'status' => 'pending',
+            'status'  => 'pending',
         ]);
 
         ProcessTicketAI::dispatch($ticket);
-        
-        // next.js'e başarı cevabı dön
-        return response()->json([
-            'message' => 'Destek talebiniz başarıyla alındı. Yapay zeka analiz ediyor...',
-            'data' => $ticket
-        ], 201); // 201 HTTP kodu oluşturuldu anlamına gelir.
-    }
-        // Tüm ticket'ları veritabanından çekip dışarıya JSON olarak döner
-        public function index()
-        {
-            // Veritabanındaki tüm ticket'ları en son yüklenenden (en yeni) başlayarak çekiyoruz
-            $tickets = Ticket::latest()->get();
 
-            // Next.js'e bu listeyi JSON formatında teslim ediyoruz
-            return response()->json($tickets, 200);
+        return response()->json([
+            'message' => 'Destek talebiniz alındı, analiz ediliyor...',
+            'data'    => $ticket
+        ], 201);
+    }
+
+    /**
+     * Ticket listesi
+     * GET /api/tickets
+     *
+     * Admin: tüm ticket'ları görür
+     * Normal kullanıcı: sadece kendi ticket'larını görür
+     */
+    public function index(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user->isAdmin()) {
+            // Admin her şeyi görsün, kim oluşturdu bilgisiyle
+            $tickets = Ticket::with('user:id,name,email,role')
+                             ->latest()
+                             ->get();
+        } else {
+            // Normal kullanıcı sadece kendinkini görsün
+            $tickets = Ticket::where('user_id', $user->id)
+                             ->latest()
+                             ->get();
         }
+
+        return response()->json($tickets);
+    }
 }

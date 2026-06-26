@@ -15,4 +15,9 @@ class Ticket extends Model
         'priority',
         'status'
     ];
+
+        public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }
